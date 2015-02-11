@@ -1,0 +1,138 @@
+// Copyright 2014 CoreOS, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package etcdmods
+
+import (
+	"path"
+	"strings"
+	"time"
+
+	"github.com/ecnahc515/etcd_modules/etcd"
+	"github.com/ecnahc515/etcd_modules/log"
+)
+
+const (
+	// Occurs when any Job's target is touched
+	JobTargetChangeEvent = Event("JobTargetChangeEvent")
+	// Occurs when any Job's target state is touched
+	JobTargetStateChangeEvent = Event("JobTargetStateChangeEvent")
+)
+
+// The default handler responds to the above two events
+var DefaultHandler = ResultHandlerFunc(defaultHandler)
+
+type Event string
+
+// EventStream generates a channel which will emit an event as soon as one of
+// interest occurs. Any background operation associated with the channel
+// should be terminated when stop is closed.
+type EventStream interface {
+	Next(stop chan struct{}) chan Event
+}
+
+type etcdEventStream struct {
+	etcd    etcd.Client
+	prefix  string
+	handler ResultHandler
+}
+
+func NewEtcdEventStream(client etcd.Client, prefix string, handler ResultHandler) EventStream {
+	if handler == nil {
+		handler = DefaultHandler
+	}
+	return &etcdEventStream{etcd: client, prefix: prefix, handler: handler}
+}
+
+// Next returns a channel which will emit an Event as soon as one of interest occurs
+func (es *etcdEventStream) Next(stop chan struct{}) chan Event {
+	evchan := make(chan Event)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+
+			res := watch(es.etcd, es.prefix, stop)
+			if res == nil || res.Node == nil {
+				return
+			}
+			if ev, ok := es.handler.Handle(res, es.prefix); ok {
+				evchan <- ev
+				return
+			}
+		}
+
+	}()
+
+	return evchan
+}
+
+func watch(client etcd.Client, key string, stop chan struct{}) (res *etcd.Result) {
+	for res == nil {
+		select {
+		case <-stop:
+			log.Debugf("Gracefully closing etcd watch loop: key=%s", key)
+			return
+		default:
+			req := &etcd.Watch{
+				Key:       key,
+				WaitIndex: 0,
+				Recursive: true,
+			}
+
+			log.Debugf("Creating etcd watcher: %v", req)
+
+			var err error
+			res, err = client.Wait(req, stop)
+			if err != nil {
+				log.Errorf("etcd watcher %v returned error: %v", req, err)
+			}
+		}
+
+		// Let's not slam the etcd server in the event that we know
+		// an unexpected error occurred.
+		time.Sleep(time.Second)
+	}
+
+	return
+}
+
+type ResultHandler interface {
+	Handle(*etcd.Result, string) (Event, bool)
+}
+
+type ResultHandlerFunc func(*etcd.Result, string) (Event, bool)
+
+func (f ResultHandlerFunc) Handle(res *etcd.Result, prefix string) (Event, bool) {
+	return f(res, prefix)
+}
+
+func defaultHandler(res *etcd.Result, prefix string) (ev Event, ok bool) {
+	if !strings.HasPrefix(res.Node.Key, prefix) {
+		return
+	}
+	switch path.Base(res.Node.Key) {
+	case "target-state":
+		ev = JobTargetStateChangeEvent
+		ok = true
+	case "target":
+		ev = JobTargetChangeEvent
+		ok = true
+	}
+
+	return
+}
