@@ -15,7 +15,9 @@
 package etcdmods
 
 import (
+	"path"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ecnahc515/etcd_modules/etcd"
@@ -56,13 +58,8 @@ func TestFilterEtcdEvents(t *testing.T) {
 			ok: false,
 		},
 		{
-			in: "/fleet/job/foobarbaz/target-state",
-			ev: JobTargetStateChangeEvent,
-			ok: true,
-		},
-		{
-			in: "/fleet/job/asdf/target",
-			ev: JobTargetChangeEvent,
+			in: "/fleet/job/valid-key",
+			ev: Event("test-event"),
 			ok: true,
 		},
 	}
@@ -77,7 +74,19 @@ func TestFilterEtcdEvents(t *testing.T) {
 				},
 				Action: action,
 			}
-			ev, ok := DefaultHandler.Handle(res, prefix)
+
+			ev, ok := ResultHandlerFunc(func(*etcd.Result, string) (ev Event, ok bool) {
+				if !strings.HasPrefix(res.Node.Key, prefix) {
+					return
+				}
+				switch path.Base(res.Node.Key) {
+				case "valid-key":
+					ev = Event("test-event")
+					ok = true
+				}
+				return
+			}).Handle(res, prefix)
+
 			if ok != tt.ok {
 				t.Errorf("case %d: expected ok=%t, got %t", i, tt.ok, ok)
 				continue

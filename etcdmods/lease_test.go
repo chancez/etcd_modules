@@ -55,7 +55,7 @@ func TestSerializeLeaseMetadata(t *testing.T) {
 func TestLeaseFromResult(t *testing.T) {
 	tests := []struct {
 		res  etcd.Result
-		want etcdLease
+		want lease
 	}{
 		// typical case
 		{
@@ -67,11 +67,11 @@ func TestLeaseFromResult(t *testing.T) {
 					Value:         `{"MachineID":"XXX","Version":19}`,
 				},
 			},
-			want: etcdLease{
+			want: lease{
 				key: "/foo/bar",
 				idx: 12,
 				ttl: time.Second * 9,
-				meta: etcdLeaseMetadata{
+				meta: leaseMetadata{
 					MachineID: "XXX",
 					Version:   19,
 				},
@@ -88,11 +88,11 @@ func TestLeaseFromResult(t *testing.T) {
 					Value:         "XXX",
 				},
 			},
-			want: etcdLease{
+			want: lease{
 				key: "/foo/bar",
 				idx: 12,
 				ttl: time.Second * 9,
-				meta: etcdLeaseMetadata{
+				meta: leaseMetadata{
 					MachineID: "XXX",
 					Version:   0,
 				},
@@ -109,11 +109,11 @@ func TestLeaseFromResult(t *testing.T) {
 					Value:         `{"MachineID":"XXX","Ver`,
 				},
 			},
-			want: etcdLease{
+			want: lease{
 				key: "/foo/bar",
 				idx: 12,
 				ttl: time.Second * 9,
-				meta: etcdLeaseMetadata{
+				meta: leaseMetadata{
 					MachineID: `{"MachineID":"XXX","Ver`,
 					Version:   0,
 				},

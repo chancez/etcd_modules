@@ -15,48 +15,26 @@
 package etcdmods
 
 import (
-	"path"
-	"strings"
 	"time"
 
 	"github.com/ecnahc515/etcd_modules/etcd"
 	"github.com/ecnahc515/etcd_modules/log"
 )
 
-const (
-	// Occurs when any Job's target is touched
-	JobTargetChangeEvent = Event("JobTargetChangeEvent")
-	// Occurs when any Job's target state is touched
-	JobTargetStateChangeEvent = Event("JobTargetStateChangeEvent")
-)
-
-// The default handler responds to the above two events
-var DefaultHandler = ResultHandlerFunc(defaultHandler)
-
 type Event string
 
-// EventStream generates a channel which will emit an event as soon as one of
-// interest occurs. Any background operation associated with the channel
-// should be terminated when stop is closed.
-type EventStream interface {
-	Next(stop chan struct{}) chan Event
-}
-
-type etcdEventStream struct {
+type eventStream struct {
 	etcd    etcd.Client
 	prefix  string
 	handler ResultHandler
 }
 
-func NewEtcdEventStream(client etcd.Client, prefix string, handler ResultHandler) EventStream {
-	if handler == nil {
-		handler = DefaultHandler
-	}
-	return &etcdEventStream{etcd: client, prefix: prefix, handler: handler}
+func NewEventStream(client etcd.Client, prefix string, handler ResultHandler) EventStream {
+	return &eventStream{etcd: client, prefix: prefix, handler: handler}
 }
 
 // Next returns a channel which will emit an Event as soon as one of interest occurs
-func (es *etcdEventStream) Next(stop chan struct{}) chan Event {
+func (es *eventStream) Next(stop chan struct{}) chan Event {
 	evchan := make(chan Event)
 	go func() {
 		for {
@@ -111,6 +89,7 @@ func watch(client etcd.Client, key string, stop chan struct{}) (res *etcd.Result
 	return
 }
 
+// ResultHandler generates an Event from a result returned by etcd.
 type ResultHandler interface {
 	Handle(*etcd.Result, string) (Event, bool)
 }
@@ -119,20 +98,4 @@ type ResultHandlerFunc func(*etcd.Result, string) (Event, bool)
 
 func (f ResultHandlerFunc) Handle(res *etcd.Result, prefix string) (Event, bool) {
 	return f(res, prefix)
-}
-
-func defaultHandler(res *etcd.Result, prefix string) (ev Event, ok bool) {
-	if !strings.HasPrefix(res.Node.Key, prefix) {
-		return
-	}
-	switch path.Base(res.Node.Key) {
-	case "target-state":
-		ev = JobTargetStateChangeEvent
-		ok = true
-	case "target":
-		ev = JobTargetChangeEvent
-		ok = true
-	}
-
-	return
 }

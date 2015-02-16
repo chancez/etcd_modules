@@ -20,28 +20,27 @@ import (
 	"time"
 
 	"github.com/ecnahc515/etcd_modules/etcd"
-	"github.com/ecnahc515/etcd_modules/lease"
 )
 
 const (
 	leasePrefix = "lease"
 )
 
-type etcdLeaseMetadata struct {
+type leaseMetadata struct {
 	MachineID string
 	Version   int
 }
 
-// etcdLease implements the Lease interface
-type etcdLease struct {
+// lease implements the Lease interface
+type lease struct {
 	key    string
-	meta   etcdLeaseMetadata
+	meta   leaseMetadata
 	idx    uint64
 	ttl    time.Duration
 	client etcd.Client
 }
 
-func (l *etcdLease) Release() error {
+func (l *lease) Release() error {
 	req := etcd.Delete{
 		Key:           l.key,
 		PreviousIndex: l.idx,
@@ -50,7 +49,7 @@ func (l *etcdLease) Release() error {
 	return err
 }
 
-func (l *etcdLease) Renew(period time.Duration) error {
+func (l *lease) Renew(period time.Duration) error {
 	val, err := serializeLeaseMetadata(l.meta.MachineID, l.meta.Version)
 	req := etcd.Set{
 		Key:           l.key,
@@ -70,24 +69,24 @@ func (l *etcdLease) Renew(period time.Duration) error {
 	return nil
 }
 
-func (l *etcdLease) MachineID() string {
+func (l *lease) MachineID() string {
 	return l.meta.MachineID
 }
 
-func (l *etcdLease) Version() int {
+func (l *lease) Version() int {
 	return l.meta.Version
 }
 
-func (l *etcdLease) Index() uint64 {
+func (l *lease) Index() uint64 {
 	return l.idx
 }
 
-func (l *etcdLease) TimeRemaining() time.Duration {
+func (l *lease) TimeRemaining() time.Duration {
 	return l.ttl
 }
 
 func serializeLeaseMetadata(machID string, ver int) (string, error) {
-	meta := etcdLeaseMetadata{
+	meta := leaseMetadata{
 		MachineID: machID,
 		Version:   ver,
 	}
@@ -113,7 +112,7 @@ func (r *LeaseManager) leasePath(name string) string {
 	return path.Join(r.keyPrefix, leasePrefix, name)
 }
 
-func (r *LeaseManager) GetLease(name string) (lease.Lease, error) {
+func (r *LeaseManager) GetLease(name string) (Lease, error) {
 	key := r.leasePath(name)
 	req := etcd.Get{
 		Key: key,
@@ -131,7 +130,7 @@ func (r *LeaseManager) GetLease(name string) (lease.Lease, error) {
 	return l, nil
 }
 
-func (r *LeaseManager) StealLease(name, machID string, ver int, period time.Duration, idx uint64) (lease.Lease, error) {
+func (r *LeaseManager) StealLease(name, machID string, ver int, period time.Duration, idx uint64) (Lease, error) {
 	val, err := serializeLeaseMetadata(machID, ver)
 	if err != nil {
 		return nil, err
@@ -156,7 +155,7 @@ func (r *LeaseManager) StealLease(name, machID string, ver int, period time.Dura
 	return l, nil
 }
 
-func (r *LeaseManager) AcquireLease(name string, machID string, ver int, period time.Duration) (lease.Lease, error) {
+func (r *LeaseManager) AcquireLease(name string, machID string, ver int, period time.Duration) (Lease, error) {
 	val, err := serializeLeaseMetadata(machID, ver)
 	if err != nil {
 		return nil, err
@@ -180,8 +179,8 @@ func (r *LeaseManager) AcquireLease(name string, machID string, ver int, period 
 	return l, nil
 }
 
-func leaseFromResult(res *etcd.Result, client etcd.Client) *etcdLease {
-	l := &etcdLease{
+func leaseFromResult(res *etcd.Result, client etcd.Client) *lease {
+	l := &lease{
 		key:    res.Node.Key,
 		idx:    res.Node.ModifiedIndex,
 		ttl:    res.Node.TTLDuration(),
@@ -194,7 +193,7 @@ func leaseFromResult(res *etcd.Result, client etcd.Client) *etcdLease {
 	// backwards-compatibility with engines that are not aware
 	// of this versioning mechanism
 	if err != nil {
-		l.meta = etcdLeaseMetadata{
+		l.meta = leaseMetadata{
 			MachineID: res.Node.Value,
 			Version:   0,
 		}
