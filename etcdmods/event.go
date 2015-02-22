@@ -17,8 +17,8 @@ package etcdmods
 import (
 	"time"
 
+	"github.com/coreos/pkg/log"
 	"github.com/ecnahc515/etcd_modules/etcd"
-	"github.com/ecnahc515/etcd_modules/log"
 	"github.com/jonboulle/clockwork"
 )
 

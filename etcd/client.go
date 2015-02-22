@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/ecnahc515/etcd_modules/log"
+	"github.com/coreos/pkg/log"
 )
 
 const (
