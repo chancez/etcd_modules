@@ -7,13 +7,13 @@ import (
 	etcd "github.com/coreos/etcd/client"
 )
 
-func FindNodeByValue(nodes []*etcd.Node, value string) (node *etcd.Node) {
-	for _, node = range nodes {
+func FindNodeByValue(nodes []*etcd.Node, value string) (node *etcd.Node, pos int) {
+	for pos, node = range nodes {
 		if node.Value == value {
 			return
 		}
 	}
-	return nil
+	return nil, 0
 }
 
 func NodeIndex(node *etcd.Node) (index uint64) {
