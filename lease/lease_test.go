@@ -12,36 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package etcdmods
+package lease
 
 import (
 	"reflect"
 	"testing"
-	"time"
 
-	"github.com/ecnahc515/etcd_modules/etcd"
+	etcd "github.com/coreos/etcd/client"
 )
 
 func TestSerializeLeaseMetadata(t *testing.T) {
 	tests := []struct {
-		machID string
-		ver    int
-		want   string
+		owner string
+		ver   int
+		want  string
 	}{
 		{
-			machID: "XXX",
-			ver:    9,
-			want:   `{"MachineID":"XXX","Version":9}`,
+			owner: "XXX",
+			ver:   9,
+			want:  `{"Owner":"XXX","Version":9}`,
 		},
 		{
-			machID: "XXX",
-			ver:    0,
-			want:   `{"MachineID":"XXX","Version":0}`,
+			owner: "XXX",
+			ver:   0,
+			want:  `{"Owner":"XXX","Version":0}`,
 		},
 	}
 
 	for i, tt := range tests {
-		got, err := serializeLeaseMetadata(tt.machID, tt.ver)
+		got, err := serializeLeaseMetadata(tt.owner, tt.ver)
 		if err != nil {
 			t.Errorf("case %d: unexpected err=%v", i, err)
 			continue
@@ -54,77 +53,55 @@ func TestSerializeLeaseMetadata(t *testing.T) {
 
 func TestLeaseFromResult(t *testing.T) {
 	tests := []struct {
-		res  etcd.Result
-		want lease
+		res       etcd.Response
+		want      *lease
+		shouldErr bool
 	}{
 		// typical case
 		{
-			res: etcd.Result{
+			res: etcd.Response{
 				Node: &etcd.Node{
 					Key:           "/foo/bar",
 					ModifiedIndex: 12,
 					TTL:           9,
-					Value:         `{"MachineID":"XXX","Version":19}`,
+					Value:         `{"Owner":"XXX","Version":19}`,
 				},
 			},
-			want: lease{
+			want: &lease{
 				key: "/foo/bar",
 				idx: 12,
-				ttl: time.Second * 9,
+				ttl: 9,
 				meta: leaseMetadata{
-					MachineID: "XXX",
-					Version:   19,
+					Owner:   "XXX",
+					Version: 19,
 				},
 			},
+			shouldErr: false,
 		},
-
-		// backwards-compatibility with unversioned engines
+		// Invalid json should just bubble up the error
 		{
-			res: etcd.Result{
+			res: etcd.Response{
 				Node: &etcd.Node{
 					Key:           "/foo/bar",
 					ModifiedIndex: 12,
 					TTL:           9,
-					Value:         "XXX",
+					Value:         `{"Owner":"XXX","Ver}`,
 				},
 			},
-			want: lease{
-				key: "/foo/bar",
-				idx: 12,
-				ttl: time.Second * 9,
-				meta: leaseMetadata{
-					MachineID: "XXX",
-					Version:   0,
-				},
-			},
-		},
-
-		// json decode failures are treated like a nonversioned lease
-		{
-			res: etcd.Result{
-				Node: &etcd.Node{
-					Key:           "/foo/bar",
-					ModifiedIndex: 12,
-					TTL:           9,
-					Value:         `{"MachineID":"XXX","Ver`,
-				},
-			},
-			want: lease{
-				key: "/foo/bar",
-				idx: 12,
-				ttl: time.Second * 9,
-				meta: leaseMetadata{
-					MachineID: `{"MachineID":"XXX","Ver`,
-					Version:   0,
-				},
-			},
+			want:      nil,
+			shouldErr: true,
 		},
 	}
 
 	for i, tt := range tests {
-		got := leaseFromResult(&tt.res, nil)
-		if !reflect.DeepEqual(tt.want, *got) {
-			t.Errorf("case %d: incorrect output from leaseFromResult\nwant=%#v\ngot=%#vs", i, tt.want, *got)
+		got, err := leaseFromResult(&tt.res, nil)
+		if tt.shouldErr && err == nil {
+			t.Errorf("Expected err != nil got err=nil")
+		} else if !tt.shouldErr && err != nil {
+			t.Errorf("Expected err == nil, got err=%v", err)
+		}
+		if !reflect.DeepEqual(tt.want, got) {
+			t.Errorf("case %d: incorrect output from leaseFromResult\nwant=%#v\ngot=%#vs", i, tt.want, got)
 		}
 	}
 }

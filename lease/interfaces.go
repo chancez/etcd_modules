@@ -1,13 +1,6 @@
-package etcdmods
+package lease
 
 import "time"
-
-// EventStream generates a channel which will emit an event as soon as one of
-// interest occurs. Any background operation associated with the channel
-// should be terminated when stop is closed.
-type EventStream interface {
-	Next(stop chan struct{}) chan Event
-}
 
 // Lease proxies to an auto-expiring lease stored in a LeaseRegistry.
 // The creator of a Lease must repeatedly call Renew to keep their lease
@@ -26,13 +19,12 @@ type Lease interface {
 	// operation fails for any other reason.
 	Release() error
 
-	// MachineID returns the ID of the Machine that holds this Lease. This
-	// value must be considered a cached value as it is not guaranteed to
-	// be correct.
-	MachineID() string
+	// Owner returns the current holder of this Lease. This value must be
+	// considered a cached value as it is not guaranteed to be correct.
+	Owner() string
 
 	// Version returns the current version at which the lessee is operating.
-	// This value has the same correctness guarantees as MachineID.
+	// This value has the same correctness guarantees as Owner.
 	// It is up to the caller to determine what this Version means.
 	Version() int
 
@@ -41,12 +33,12 @@ type Lease interface {
 	// field of a node in etcd.
 	Index() uint64
 
-	// TimeRemaining represents the amount of time left on the Lease when
-	// it was fetched from the LeaseRegistry.
-	TimeRemaining() time.Duration
+	// TimeRemaining represents the amount of time left in seconds on the
+	// Lease when it was fetched
+	TimeRemaining() int64
 }
 
-type Manager interface {
+type LeaseAPI interface {
 	// GetLease fetches a Lease only if it exists. If it does not
 	// exist, a nil Lease will be returned. Any other failures
 	// result in non-nil error and nil Lease objects.
@@ -56,10 +48,10 @@ type Manager interface {
 	// currently held. If a Lease cannot be acquired, a nil Lease
 	// object is returned. An error is returned only if there is a
 	// failure communicating with the Registry.
-	AcquireLease(name, machID string, ver int, period time.Duration) (Lease, error)
+	AcquireLease(name, owner string, ver int, period time.Duration) (Lease, error)
 
 	// StealLease attempts to replace the lessee of the Lease identified
 	// by the provided name and index with a new lessee. This function
 	// will fail if the named Lease has progressed past the given index.
-	StealLease(name, machID string, ver int, period time.Duration, idx uint64) (Lease, error)
+	StealLease(name, owner string, ver int, period time.Duration, idx uint64) (Lease, error)
 }
